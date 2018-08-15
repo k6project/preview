@@ -1,4 +1,5 @@
-#include "common.hpp"
+#include "main.hpp"
+#include "vars.hpp"
 
 #include <map>
 #include <cstdio>
@@ -9,12 +10,10 @@
 
 using namespace std;
 
-#define CHECKSUM_INIT 5381u;
+#define SYM_ID_INIT 5381u;
 
 template <typename T, unsigned int N> 
 unsigned int length(const T (&arr)[N]){return N;}
-
-typedef map<SymId, string> SymbolTable;
 
 void log(const char* fmt, ...)
 {
@@ -23,46 +22,29 @@ void log(const char* fmt, ...)
     printf("\n");
 }
 
-const char* getSymbol(SymId id, const char* fallback)
+sym_id id(const char* str)
 {
-	static SymbolTable table;
-	const auto pos = table.find(id);
-	if (pos == table.end())
-	{
-		if (fallback)
-		{
-			table.emplace(id, fallback);
-		} 
-		return fallback;
-	}
-	return pos->second.c_str();
-}
-
-SymId getSymId(const char* symbol)
-{
-	static unsigned int count = 0;
-	const char* original = symbol;
-	char tmp[24];
-	if (!symbol || !*symbol)
-	{
-		sprintf(tmp, "NoName_%u", count++);
-		symbol = tmp;
-	}
-	SymId checksum = CHECKSUM_INIT;
-    while (char c = *symbol++)
+    static unsigned int count = 0;
+    char tmp[24];
+    if (!str || !*str)
+    {
+        sprintf(tmp, "NoName_%u", count++);
+        str = tmp;
+    }
+    sym_id checksum = SYM_ID_INIT;
+    while (char c = *str++)
     {
         checksum = ((checksum << 5) + checksum) ^ c;
     }
-	getSymbol(checksum, original);
     return checksum;
 }
 
-static void prompt(SymId& checksum, const char*& params)
+static void prompt(sym_id& sid, const char*& params)
 {
     bool capture = false;
     static char line[65536];
     unsigned int length = 0;
-    checksum = CHECKSUM_INIT;
+    sid = SYM_ID_INIT;
     printf("-> ");
     do
     {
@@ -77,7 +59,7 @@ static void prompt(SymId& checksum, const char*& params)
         }
         if (!capture)
         {
-            checksum = ((checksum << 5) + checksum) ^ c;
+            sid = ((sid << 5) + sid) ^ c;
         }
         else if (length < (sizeof(line) - 1))
         {
@@ -91,25 +73,25 @@ static void prompt(SymId& checksum, const char*& params)
     }
 }
 
-class CommandMap
+static class
 {
+
+    typedef function<void(const char*)> callback;
 
 public:
 
-    typedef function<void(const char*)> Callback;
-
-    void add(const char* command, Callback cb)
+    void add(const char* cmd, callback cb)
     {
         if (cb)
         {
-            SymId checksum = getSymId(command);
-            mappings[checksum] = cb;
+            sym_id sid = id(cmd);
+            mappings[sid] = cb;
         }
     }
 
-    void exec(SymId checksum, const char* params)
+    void exec(sym_id sid, const char* params)
     {
-        const auto pos = mappings.find(checksum);
+        const auto pos = mappings.find(sid);
         if (pos != mappings.end())
         {
             pos->second(params);
@@ -118,23 +100,23 @@ public:
 
 private:
 
-    map<unsigned int, Callback> mappings;
+    map<unsigned int, callback> mappings;
 
-};
+} g_cmdmap;
 
 int main(int argc, const char* argv[])
 {
-    CommandMap cmdMap;
-    bool keepRunning = true;
+    bool keep_running = true;
 
-    cmdMap.add("quit", [&](const char *) { keepRunning = false; });
+    g_cmdmap.add("quit", [&](const char *) { keep_running = false; });
+    g_cmdmap.add("vec3f", &set_vec3f);
 
-    while (keepRunning)
+    while (keep_running)
     {
-        SymId checksum = 0;
+        sym_id sid = 0;
         const char* params = nullptr;
-        prompt(checksum, params);
-        cmdMap.exec(checksum, params);
+        prompt(sid, params);
+        g_cmdmap.exec(sid, params);
     }
 
     return 0;
